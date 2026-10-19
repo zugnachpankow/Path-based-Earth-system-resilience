@@ -33,8 +33,16 @@ keywords:
   - climate emulator
   - FaIR
   - pycascades
-# When the paper is published, fill in the DOI/journal below so "Cite this repository"
-# points at the publication.
+doi: 10.5281/zenodo.23473538          
+identifiers:                           
+  - type: doi
+    value: 10.5281/zenodo.23473538
+    description: Concept DOI (all versions)
+  - type: doi
+    value: 10.5281/zenodo.<v1.0.0>
+    description: Version DOI of v1.0.0
+version: 1.0.1
+date-released: 2026-10-19
 preferred-citation:
   type: article
   title: "Ambitious emission reductions maintain Earth resilience, conditional on climate and carbon feedbacks and tipping points"
