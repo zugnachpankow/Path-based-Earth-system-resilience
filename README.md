@@ -5,8 +5,9 @@ Code base for the forthcoming publication "Ambitious emission reductions maintai
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPLv3-blue.svg)](LICENSE)
 [![DOI](https://img.shields.io/badge/DOI-pending-blue)](https://doi.org/PENDING)
 [![Python 3.14](https://img.shields.io/badge/Python-3.14-blue)](https://www.python.org/)
+[![DOI](https://zenodo.org/badge/1425507465.svg)](https://doi.org/10.5281/zenodo.23473538)
 
-<!-- FILL IN: preprint/journal link, Zenodo software + dataset DOIs, author list -->
+<!-- FILL IN: preprint/journal link -->
 
 ---
 
