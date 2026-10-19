@@ -1,0 +1,392 @@
+"""earth-system tipping-cascade model, adapted from pycascades (Wunderling et al. 2021)"""
+from joblib import Parallel, delayed
+import os
+
+# respect the slurm allocation; fall back to cpu affinity when not under slurm
+n_jobs = int(os.environ.get("SLURM_CPUS_PER_TASK", len(os.sched_getaffinity(0))))
+
+import sys
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import scipy.stats as st
+from scipy.stats import spearmanr
+import os
+import json
+from climateforcing.utils import mkdir_p
+import xarray as xr
+from itertools import product
+from matplotlib.patches import Rectangle
+from matplotlib.colors import to_rgb
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
+from scipy.interpolate import griddata
+import math
+from tqdm import tqdm
+import itertools
+from itertools import combinations
+
+import re
+
+from os import listdir
+from os.path import isfile, join
+
+from fair import FAIR
+from fair.interface import fill, initialise
+from fair.io import read_properties
+
+from scipy.interpolate import interp1d
+from scipy.integrate import solve_ivp
+
+from pycascades.core.coupling import coupling
+# cusp is vendored locally (src/tipping_element.py) because it needs a callable control c(t)
+from tipping_element import cusp
+
+import networkx as nx
+from tqdm import trange
+
+# shared lhs tipping parameters, so sample indices stay aligned across users
+from tipping_params import param_bounds, pf_bounds, sample_lhs_params, T_END
+
+from scipy.integrate import quad
+
+# cusp timescale conversion: literature tipping time tau is the time an uncoupled cusp needs
+# to go x=-1 -> x=+1 at GMT_CAL with threshold TCRIT_CAL; in dx/dt=(1/T)(-x^3+x+c) that takes
+# I_CAL*T, so the ode time constant is T = tau / I_CAL
+GMT_CAL, TCRIT_CAL = 4.0, 1.8
+I_CAL = quad(lambda x: 1.0 / (-x**3 + x + np.sqrt(4 / 27) * GMT_CAL / TCRIT_CAL), -1.0, 1.0)[0]
+
+
+def ode_timescale(tau):
+    """literature tipping time tau (yr) -> ode time constant T (yr)"""
+    return tau / I_CAL
+
+
+class global_functions():
+    """linear feedbacks; maximal feedback from 2.0°C onwards"""
+    def feedback_function(GMT, fbmax):
+        if GMT <= 2.0:
+            y = (fbmax / 2.0) * GMT
+            return y
+        elif GMT > 2.0:
+            return fbmax
+        else:
+            raise Exception("GMT negativ: Feedbacks do not work for temperatures smaller 0!")
+
+    # linear increase of feedbacks between state -1 and +1
+    def state_feedback(state, fbmax):
+        if state >= -1 and state <= 1:
+            y = fbmax / 2 * (state + 1)
+        elif state < -1:
+            y = 0.
+        elif state > +1:
+            y = fbmax
+        return y
+
+    # c = c(GMT), tipping occurs at sqrt(4/27); linear map GMT -> c through two points
+    def CUSPc(x1, x2, x):
+        if x >= x1:
+            y1 = 0.0
+            y2 = np.sqrt(4 / 27)
+            y = (y2 - y1) / (x2 - x1) * (x - x1) + y1
+            return y
+        else:
+            return 0.0
+
+class linear_coupling_earth_system(coupling):
+
+    def __init__(self, strength, x_0):
+        coupling.__init__(self)
+        self._strength = strength
+        self._x_0 = x_0
+
+    def dxdt_cpl(self):
+        return lambda t, x_from, x_to: self._strength * (x_from - self._x_0)
+
+    def jac_cpl(self):
+        return lambda t, x_from, x_to: self._strength
+
+    def jac_diag(self):
+        return lambda t, x_from, x_to: 0
+
+    def bif_impact(self):
+        return lambda t, x_from, x_to: self._strength * (x_from - self._x_0)
+
+class tipping_network(nx.DiGraph):
+
+    def __init__( self, incoming_graph_data=None, **attr):
+        nx.DiGraph.__init__( self, incoming_graph_data=None, **attr)
+
+    def add_element( self, tipping_element ):
+        ind = self.number_of_nodes()
+        super().add_node( ind, data = tipping_element )
+        self.nodes[ind]['lambda_f'] = tipping_element.dxdt_diag()
+        self.nodes[ind]['lambda_jac'] = tipping_element.jac_diag()
+
+    def add_coupling( self, from_id, to_id, coupling):
+        super().add_edge( from_id, to_id, data = coupling)
+        self[from_id][to_id]['lambda_f'] = coupling.dxdt_cpl()
+        self[from_id][to_id]['lambda_jac'] = coupling.jac_cpl()
+        self[from_id][to_id]['lambda_jac_diag'] = coupling.jac_diag()
+
+    def set_param( self, node_id, key, val ):
+        element = self.nodes[node_id]['data']
+        element.set_par( key, val)
+        self.nodes[node_id]['lambda_f'] = self.nodes[node_id]['data'].dxdt_diag()
+        self.nodes[node_id]['lambda_jac'] = self.nodes[node_id]['data'].jac_diag()
+
+    def get_tip_states( self, x):
+        tipped = [self.nodes[i]['data'].tip_state()(x[i]) for i in self.nodes()]
+        return np.array( tipped )
+
+    def get_node_types( self ):
+        type_list = [self.nodes[i]['data'].get_type() for i in self.nodes()]
+        return type_list
+
+    def get_number_tipped( self, x):
+        return np.count_nonzero( self.get_tip_states( x ) )
+
+    def f( self, x, t):
+        f = np.zeros( self.number_of_nodes() )
+        for node in self.nodes(data=True):
+            ind = node[0]
+            x_comp = x[ind]
+            f[ind] = node[1]['lambda_f'].__call__( t, x_comp)
+        for edge in self.edges(data=True):
+            from_id = edge[0]
+            to_id = edge[1]
+            lmd = edge[2]['lambda_f']
+            f[to_id] += lmd.__call__( t, x[from_id], x[to_id])
+        return f
+
+    def jac(self, x, t):
+        jac = np.zeros((self.number_of_nodes(), self.number_of_nodes()))
+        for node in self.nodes(data=True):
+            ind = node[0]
+            x_comp = x[ind]
+            jac[ind,ind] = node[1]['lambda_jac'].__call__( t, x_comp)
+        for edge in self.edges(data=True):
+            from_id = edge[0]
+            to_id = edge[1]
+            lmd = edge[2]['lambda_jac']
+            jac[to_id, from_id] = lmd.__call__( t, x[from_id], x[to_id] )
+            lmd_diag = edge[2]['lambda_jac_diag']
+            jac[to_id, to_id] += lmd_diag.__call__( t, x[from_id], x[to_id] )
+        return jac
+
+    def set_vulnerability(self, node_id, bool_val):
+        self.nodes[node_id]["vulnerable"] = bool_val
+
+    def get_vulnerability_network(self):
+        G = nx.Graph()
+        for node in self.nodes():
+            G.add_node(node)
+            G.nodes[node]["vulnerable"] = self.nodes[node]["vulnerable"]
+        for edge in self.edges():
+                if self.nodes[edge[0]]["vulnerable"] and self.nodes[edge[1]]["vulnerable"]:
+                    G.add_edge(edge[0],edge[1])
+        return G
+
+    def get_out_component_size(self, from_id):
+        out_component_size = -1
+        for node in self.nodes():
+            if nx.has_path(self, from_id, node):
+                out_component_size += 1
+        return out_component_size
+
+    def compute_impact_matrix(self):
+        n = self.number_of_nodes()
+        impact_matrix = [[lambda t, x1, x2: 0 for j in range(n)] for i in range(n)]
+        for edge in self.edges.data():
+            print(edge[2]['data'].bif_impact())
+            impact_matrix[edge[1]][edge[0]]=edge[2]['data'].bif_impact()
+        return impact_matrix
+
+# the literature timescales tau are converted once to the cusp ode time constant T = tau / I_CAL;
+# every term carries the same 1/T, so the conversion only rescales the clock
+class Earth_System():
+    def __init__(self, gis_time, thc_time, wais_time, amaz_time, limits_gis, limits_thc, limits_wais, limits_amaz,
+                  pf_wais_to_gis, pf_thc_to_gis, pf_gis_to_thc, pf_wais_to_thc, pf_gis_to_wais, pf_thc_to_wais, pf_thc_to_amaz):
+        # literature tau -> ode time constant T = tau / I_CAL
+        self._gis_time = ode_timescale(gis_time)
+        self._thc_time = ode_timescale(thc_time)
+        self._wais_time = ode_timescale(wais_time)
+        self._amaz_time = ode_timescale(amaz_time)
+
+        #tipping limits
+        self._limits_gis = limits_gis
+        self._limits_thc = limits_thc
+        self._limits_wais = limits_wais
+        self._limits_amaz = limits_amaz
+
+        #probability fractions
+        self._pf_wais_to_gis = pf_wais_to_gis
+        self._pf_thc_to_gis = pf_thc_to_gis
+        self._pf_gis_to_thc = pf_gis_to_thc
+        self._pf_wais_to_thc = pf_wais_to_thc
+        self._pf_gis_to_wais = pf_gis_to_wais
+        self._pf_thc_to_wais = pf_thc_to_wais
+        self._pf_thc_to_amaz = pf_thc_to_amaz
+
+    # kk0, kk1 are network-type switches in {-1, 0, +1}
+    def earth_network(self, effective_GMT, strength, kk0, kk1):
+        gis = cusp(a=-1 / self._gis_time, b=1 / self._gis_time, c=(1 / self._gis_time) * global_functions.CUSPc(0., self._limits_gis, effective_GMT), x_0=0.0)
+        thc = cusp(a=-1 / self._thc_time, b=1 / self._thc_time, c=(1 / self._thc_time) * global_functions.CUSPc(0., self._limits_thc, effective_GMT), x_0=0.0)
+        wais = cusp(a=-1 / self._wais_time, b=1 / self._wais_time, c=(1 / self._wais_time) * global_functions.CUSPc(0., self._limits_wais, effective_GMT), x_0=0.0)
+        amaz = cusp(a=-1 / self._amaz_time, b=1 / self._amaz_time, c=(1 / self._amaz_time) * global_functions.CUSPc(0., self._limits_amaz, effective_GMT), x_0=0.0)
+
+        net = tipping_network()
+        net.add_element(gis)
+        net.add_element(thc)
+        net.add_element(wais)
+        net.add_element(amaz)
+
+        net.add_coupling(1, 0, linear_coupling_earth_system(strength=-(1 / self._gis_time) * strength * self._pf_thc_to_gis, x_0=-1))
+        net.add_coupling(2, 0, linear_coupling_earth_system(strength=(1 / self._gis_time) * strength * self._pf_wais_to_gis, x_0=-1))
+
+        net.add_coupling(0, 1, linear_coupling_earth_system(strength=(1 / self._thc_time) * strength * self._pf_gis_to_thc, x_0=-1))
+        net.add_coupling(2, 1, linear_coupling_earth_system(strength=(1 / self._thc_time) * strength * self._pf_wais_to_thc * kk0, x_0=-1))
+
+        net.add_coupling(0, 2, linear_coupling_earth_system(strength=(1 / self._wais_time) * strength * self._pf_gis_to_wais, x_0=-1))
+        net.add_coupling(1, 2, linear_coupling_earth_system(strength=(1 / self._wais_time) * strength * self._pf_thc_to_wais, x_0=-1))
+
+        net.add_coupling(1, 3, linear_coupling_earth_system(strength=(1 / self._amaz_time) * strength * self._pf_thc_to_amaz * kk1, x_0=-1))
+
+        return net
+
+    def dynamic_earth_network(self, gmt_function, strength, kk0, kk1):
+        gis = cusp(a=-1 / self._gis_time, b=1 / self._gis_time, c= lambda t : (1 / self._gis_time) * global_functions.CUSPc(0., self._limits_gis, gmt_function(t)), x_0=0.0)
+        thc = cusp(a=-1 / self._thc_time, b=1 / self._thc_time, c=lambda t :(1 / self._thc_time) * global_functions.CUSPc(0., self._limits_thc, gmt_function(t)), x_0=0.0)
+        wais = cusp(a=-1 / self._wais_time, b=1 / self._wais_time, c=lambda t :(1 / self._wais_time) * global_functions.CUSPc(0., self._limits_wais, gmt_function(t)), x_0=0.0)
+        amaz = cusp(a=-1 / self._amaz_time, b=1 / self._amaz_time, c=lambda t :(1 / self._amaz_time) * global_functions.CUSPc(0., self._limits_amaz, gmt_function(t)), x_0=0.0)
+
+        net = tipping_network()
+        net.add_element(gis)
+        net.add_element(thc)
+        net.add_element(wais)
+        net.add_element(amaz)
+
+        net.add_coupling(1, 0, linear_coupling_earth_system(strength=-(1 / self._gis_time) * strength * self._pf_thc_to_gis, x_0=-1))
+        net.add_coupling(2, 0, linear_coupling_earth_system(strength=(1 / self._gis_time) * strength * self._pf_wais_to_gis, x_0=-1))
+
+        net.add_coupling(0, 1, linear_coupling_earth_system(strength=(1 / self._thc_time) * strength * self._pf_gis_to_thc, x_0=-1))
+        net.add_coupling(2, 1, linear_coupling_earth_system(strength=(1 / self._thc_time) * strength * self._pf_wais_to_thc * kk0, x_0=-1))
+
+        net.add_coupling(0, 2, linear_coupling_earth_system(strength=(1 / self._wais_time) * strength * self._pf_gis_to_wais, x_0=-1))
+        net.add_coupling(1, 2, linear_coupling_earth_system(strength=(1 / self._wais_time) * strength * self._pf_thc_to_wais, x_0=-1))
+
+        net.add_coupling(1, 3, linear_coupling_earth_system(strength=(1 / self._amaz_time) * strength * self._pf_thc_to_amaz * kk1, x_0=-1))
+
+        return net
+
+
+elements = ["GIS", "THC", "WAIS", "AMAZ"]
+
+
+def compute_tip_prob(temperature_da, params, n_samples, configs, runs,
+                     t_start=0, t_end=T_END, n_eval=None, n_jobs=n_jobs):
+    """tipping probabilities for one scenario's temperature field"""
+    if n_eval is None:
+        n_eval = int(np.ceil((t_end - t_start) / 50.0)) + 1   # output spacing <= 50 yr
+    t_eval = np.linspace(t_start, t_end, n_eval)
+
+    def run_single_sample(i, gmt_function):
+
+        pr_i = {key: params[key][i] for key in param_bounds}
+        pf_i = {key: params[key][i] for key in pf_bounds}
+
+        sys = Earth_System(
+            **pr_i,
+            **pf_i,
+        )
+
+        net = sys.dynamic_earth_network(
+            gmt_function=gmt_function,
+            strength=params["strength"][i],
+            kk0=1,
+            kk1=1
+        )
+        sol = solve_ivp(
+            fun=lambda t, x: net.f(x, t),
+            t_span=(t_start, t_end),
+            y0=[-1, -1, -1, -1],
+            t_eval=t_eval,
+            atol=1e-3,
+            rtol=1e-3,
+            method="LSODA"
+        )
+        # a failed solve is nan, never counted as "not tipped"
+        if (not sol.success) or sol.y.shape[1] == 0:
+            nan4 = np.full(4, np.nan)
+            return nan4, False, nan4
+        tipped = np.any(sol.y > 0.0, axis=1).astype(float)
+        final = (sol.y[:, -1] > 0.0).astype(float)
+        return tipped, True, final
+
+    prob_any = xr.DataArray(
+        np.nan,
+        dims=("config", "run"),
+        coords=dict(config=configs, run=runs),
+        name="prob_any_tipping"
+    )
+    prob_any_sample = xr.DataArray(
+        np.nan,
+        dims=("sample", "config", "run"),
+        coords=dict(sample=np.arange(n_samples), config=configs, run=runs),
+        name="prob_any_tipping_sample"
+    )
+    prob_elements = xr.DataArray(
+        np.nan,
+        dims=("config", "run", "element"),
+        coords=dict(config=configs, run=runs, element=elements),
+        name="prob_element_tipping"
+    )
+
+    n_solver_failures = 0
+    n_tip_final_disagreements = 0
+    for config in tqdm(configs, desc="Config"):
+        for run in runs:
+
+            temp = temperature_da.sel(config=config, run=run)
+            time = temp.timebounds.values
+            temp = temp.values
+
+            # drop nan before interp1d; fill_value then holds the last valid committed
+            # temperature over the long hold-out up to T_END
+            valid = ~np.isnan(temp)
+            time = time[valid]
+            temp = temp[valid]
+
+            gmt_function = interp1d(
+                time,
+                temp,
+                kind="linear",
+                bounds_error=False,
+                fill_value=(temp[0], temp[-1])
+            )
+
+            results = Parallel(n_jobs=n_jobs)(
+                delayed(run_single_sample)(i, gmt_function) for i in range(n_samples)
+            )
+            tipped = np.vstack([r[0] for r in results])
+            success = np.array([r[1] for r in results], dtype=bool)
+            final = np.vstack([r[2] for r in results])
+            n_solver_failures += int((~success).sum())
+            if success.any():
+                n_tip_final_disagreements += int((tipped[success] != final[success]).sum())
+
+            any_per_sample = np.full(n_samples, np.nan)
+            if success.any():
+                any_per_sample[success] = tipped[success].any(axis=1)
+            prob_any.loc[config, run] = np.nanmean(any_per_sample) if success.any() else np.nan
+            prob_any_sample.loc[:, config, run] = any_per_sample
+            prob_elements.loc[config, run, :] = np.nanmean(tipped, axis=0)
+
+    prob_any.attrs["n_solver_failures"] = n_solver_failures
+    prob_any.attrs["n_tip_final_disagreements"] = n_tip_final_disagreements
+    if n_solver_failures:
+        import warnings
+        warnings.warn(f"compute_tip_prob: {n_solver_failures} solver failure(s) set to NaN "
+                      f"(not counted as 'not tipped').")
+    return prob_any, prob_any_sample, prob_elements

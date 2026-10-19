@@ -1,0 +1,17 @@
+#!/bin/bash
+#SBATCH --qos=short
+#SBATCH --job-name=run_33
+#SBATCH --account=copan
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=64G
+#SBATCH --time=08:00:00
+#SBATCH --output=logs/other/%x-%j.out
+#SBATCH --error=logs/other/%x-%j.err
+
+module load anaconda/2025
+source activate fair
+mkdir -p logs/other logs/tipping
+
+python si/33_coarse_grid.py

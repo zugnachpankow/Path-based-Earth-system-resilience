@@ -1,0 +1,23 @@
+#!/bin/bash
+#SBATCH --qos=short
+#SBATCH --job-name=run_11
+#SBATCH --account=copan
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=32G
+#SBATCH --time=00:45:00
+#SBATCH --output=logs/other/%x-%j.out
+#SBATCH --error=logs/other/%x-%j.err
+
+echo "------------------------------------------------------------"
+echo "SLURM JOB ID: $SLURM_JOBID"
+echo "$SLURM_NTASKS tasks"
+echo "$SLURM_CPUS_PER_TASK cpus/task"
+echo "------------------------------------------------------------"
+
+module load anaconda/2025
+source activate fair
+mkdir -p logs/other logs/tipping
+
+python 11_feedback_and_tipping_analysis.py
