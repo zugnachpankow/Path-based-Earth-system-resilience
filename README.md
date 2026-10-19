@@ -19,9 +19,10 @@ Code base for the forthcoming publication "Ambitious emission reductions maintai
 5. [Usage](#usage)
 6. [Data](#data)
 7. [Used software](#used-software)
-8. [License](#license)
-9. [Citation](#citation)
-10. [Contact](#contact)
+8. [Assistive AI use](#assistive-ai-use)
+9. [License](#license)
+10. [Citation](#citation)
+11. [Contact](#contact)
 
 ---
 
@@ -223,6 +224,9 @@ Written in Python 3.14; exact versions are pinned in [`environment.yml`](environ
 **Infrastructure:** `netCDF4` 1.7.3, `tqdm` 4.67.1, `joblib` 1.5.3, `pyDOE` 0.3.8, `pooch` 1.8.2, `climateforcing` 0.3.0, `openpyxl` 3.1.5.
 
 ---
+
+## Assistive AI use
+AI tools were used to assist with coding, code review, consistency checks and documentation. All outputs were verified and validated by the authors.
 
 ## License
 This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0); see [`LICENSE`](LICENSE).
