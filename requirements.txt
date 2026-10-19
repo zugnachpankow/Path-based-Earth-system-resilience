@@ -13,7 +13,6 @@ statsmodels==0.14.6
 climateforcing==0.3.0
 pooch==1.8.2
 tqdm==4.67.1
-scikit-learn==1.8.0
 joblib==1.5.3          # parallelism (calculator)
 networkx==3.6.1        # tipping-network graph (src/tipping.py)
 SALib==1.5.2

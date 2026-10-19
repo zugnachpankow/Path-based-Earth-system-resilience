@@ -5,7 +5,7 @@ type: software
 authors:
   - family-names: Bechthold
     given-names: Max
-    email: maxbecht@pik-potsdam.de
+    email: max.bechthold@pik-potsdam.de
     affiliation: "Potsdam Institute for Climate Impact Research (PIK)"
   - family-names: Anderies
     given-names: "John M."

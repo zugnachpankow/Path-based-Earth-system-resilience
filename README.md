@@ -3,7 +3,6 @@
 Code base for the forthcoming publication "Ambitious emission reductions maintain Earth resilience, conditional on climate and carbon feedbacks and tipping points".
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPLv3-blue.svg)](LICENSE)
-[![DOI](https://img.shields.io/badge/DOI-pending-blue)](https://doi.org/PENDING)
 [![Python 3.14](https://img.shields.io/badge/Python-3.14-blue)](https://www.python.org/)
 [![DOI](https://zenodo.org/badge/1425507465.svg)](https://doi.org/10.5281/zenodo.23473538)
 
@@ -31,7 +30,7 @@ This project quantifies the **path-based resilience** given a climate mitigation
 
 - **Temperature**: the 20-yr running-mean GMST never exceeds a threshold (default 1.5 °C) from the return year (2100) onward;
 - **Rate**: the warming rate never exceeds a threshold (default 0.4 °C per decade);
-- **Tipping**: weighted by the committed probability of triggering a tipping cascade (GIS, THC, WAIS, AMAZ).
+- **Tipping**: none of the four elements (GIS, THC, WAIS, AMAZ) tips; scored as the share of tipping samples with no tipping.
 
 The pipeline also provides a Sobol/Monte-Carlo sensitivity analysis of the criterion parameters, an Earth-system fragility view (TCRE × effective tipping temperature), and an "ambition calculator" translating a target resilience gain into required emission cuts (example figure below).
 
@@ -76,7 +75,7 @@ root; supplementary scripts and the SLURM batch scripts live in subfolders.
 
 ### Requirements
 - Python `3.14` (other versions may work; exact reproducibility is only guaranteed with this one)
-- The dependencies pinned in [`environment.yml`](environment.yml) / [`requirements.txt`](requirements.txt) (fair 2.2.3, numpy, pandas, xarray, scipy, matplotlib, netCDF4, statsmodels, scikit-learn, SALib, pyDOE, cmcrameri, climateforcing)
+- The dependencies pinned in [`environment.yml`](environment.yml) / [`requirements.txt`](requirements.txt) (fair 2.2.3, numpy, pandas, xarray, scipy, matplotlib, netCDF4, statsmodels, SALib, pyDOE, cmcrameri, climateforcing)
 
 ### Clone
 ```bash
@@ -133,7 +132,7 @@ After running the pipeline, **Table 1** (`18`) and **ED Table resilience_alt** (
 
 ## Data
 
-This repository ships **only** the small, openly-licensed **fair calibration** inputs. RCMIP and (lincensed) NGFS data must be downloaded and placed in the right folder as indicated below. All pipeline intermediates and results are regenerated and are not tracked.
+This repository ships **only** the small, openly-licensed **fair calibration** inputs. RCMIP and (licensed) NGFS data must be downloaded and placed in the right folder as indicated below. All pipeline intermediates and results are regenerated and are not tracked.
 
 ### Included: `data/raw/` (small fair reference/mapping tables, openly licensed)
 `species_configs_properties_NGFS.csv`, `fair_units_reference.csv`,
@@ -201,7 +200,7 @@ Written in Python 3.14; exact versions are pinned in [`environment.yml`](environ
 
 | Package | Version | Citation |
 |---|---|---|
-| FaIR | 2.2.3 | Leach et al. (2021), *FaIRv2.0.0*, Geosci. Model Dev. 14, 3007–3036. Calibration data: Smith (2024), Zenodo [10.5281/zenodo.10566646](https://doi.org/10.5281/zenodo.10566646) |
+| fair | 2.2.3 | Leach et al. (2021), *FaIRv2.0.0*, Geosci. Model Dev. 14, 3007–3036. Calibration data: Smith (2024), Zenodo [10.5281/zenodo.10566646](https://doi.org/10.5281/zenodo.10566646) |
 | pycascades | 1.0.2 | Wunderling et al. (2021), *Modelling nonlinear dynamics of interacting tipping elements on complex networks: the PyCascades package*, Eur. Phys. J. Spec. Top. |
 | SALib | 1.5.2 | Herman & Usher (2017), JOSS 2(9):97; Iwanaga, Usher & Herman (2022), *Toward SALib 2.0* |
 | Scientific colour maps (`cmcrameri`) | 1.9 | Crameri, Zenodo [10.5281/zenodo.1243862](https://doi.org/10.5281/zenodo.1243862); Crameri, Shephard & Heron (2020), *The misuse of colour in science communication*, Nat. Commun. 11:5444 |
@@ -217,7 +216,6 @@ Written in Python 3.14; exact versions are pinned in [`environment.yml`](environ
 | pandas | 2.3.3 | McKinney (2010); pandas development team (Zenodo) |
 | Matplotlib | 3.10.8 | Hunter (2007), Comput. Sci. Eng. 9(3):90 |
 | xarray | 2025.11.0 | Hoyer & Hamman (2017), J. Open Res. Softw. 5(1):10 |
-| scikit-learn | 1.8.0 | Pedregosa et al. (2011), JMLR 12:2825 |
 | statsmodels | 0.14.6 | Seabold & Perktold (2010), Proc. SciPy |
 | networkx | 3.6.1 | Hagberg, Schult & Swart (2008), Proc. SciPy |
 
@@ -233,11 +231,11 @@ This project is licensed under the GNU Affero General Public License v3.0 (AGPL-
 
 ## Citation
 If you use this code, please cite the repository (see [`CITATION.cff`](CITATION.cff)) and:
-- Software archive: <!-- FILL IN: Zenodo software DOI -->
+- Software archive: https://doi.org/10.5281/zenodo.23473538
 - The accompanying publication: TBD
 
 ## Contact
-- Max Bechthold, <maxbecht@pik-potsdam.de>
+- Max Bechthold, <max.bechthold@pik-potsdam.de>
 
 ## Paper co-authors
 - John M. Anderies
