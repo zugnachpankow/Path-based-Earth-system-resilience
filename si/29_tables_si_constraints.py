@@ -69,4 +69,4 @@ with open(os.path.join(OUT_DIR, "si_resilience_constraints.md"), "w") as fh:
     fh.write(f"Path-based resilience per scenario for the alternative criterion sets "
              f"(Clopper–Pearson N = {N_CP} configs). Standard 1.5 °C / 0.4 / 2100 is the "
              f"main table.\n\n" + "\n".join(md_blocks))
-print(f"\nWrote output/tables/si_resilience_constraints.{{csv,md}}  [N_CP={N_CP}]", flush=True)
+print(f"\nWrote tables/si_resilience_constraints.{{csv,md}}  [N_CP={N_CP}]", flush=True)

@@ -1,4 +1,5 @@
-"""earth-system tipping-cascade model, adapted from pycascades (Wunderling et al. 2021)"""
+"""earth-system tipping-cascade model, adapted from pycascades (Wunderling et al. 2021)
+adapted from pycascades 1.0.2, bsd 3-clause, see LICENSE-pycascades.rst"""
 from joblib import Parallel, delayed
 import os
 

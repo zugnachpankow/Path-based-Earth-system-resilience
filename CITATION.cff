@@ -21,11 +21,9 @@ authors:
     given-names: Nico
   - family-names: Donges
     given-names: Jonathan
-version: "1.0.0"
-date-released: "2026-10-08"
 license: AGPL-3.0-or-later
-repository-code: "https://github.com/zugnachpankow/Path-based-Earth-system-resilience-public"
-url: "https://github.com/zugnachpankow/Path-based-Earth-system-resilience-public"
+repository-code: "https://github.com/zugnachpankow/Path-based-Earth-system-resilience"
+url: "https://github.com/zugnachpankow/Path-based-Earth-system-resilience"
 keywords:
   - Earth resilience
   - planetary boundaries
@@ -33,16 +31,9 @@ keywords:
   - climate emulator
   - FaIR
   - pycascades
-doi: 10.5281/zenodo.23473538          
-identifiers:                           
-  - type: doi
-    value: 10.5281/zenodo.23473538
-    description: Concept DOI (all versions)
-  - type: doi
-    value: 10.5281/zenodo.<v1.0.0>
-    description: Version DOI of v1.0.0
-version: 1.0.1
-date-released: 2026-10-19
+doi: 10.5281/zenodo.23473538
+version: "1.0.1"
+date-released: "2026-10-19"
 preferred-citation:
   type: article
   title: "Ambitious emission reductions maintain Earth resilience, conditional on climate and carbon feedbacks and tipping points"

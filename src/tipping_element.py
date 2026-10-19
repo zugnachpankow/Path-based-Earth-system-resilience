@@ -1,4 +1,5 @@
-"""tipping_element classes (vendored pycascades)"""
+"""tipping_element classes (vendored pycascades)
+adapted from pycascades 1.0.2, bsd 3-clause, see LICENSE-pycascades.rst"""
 import numpy as np
 
 class tipping_element:
